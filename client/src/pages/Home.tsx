@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Eye,
   FastForward,
+  Globe2,
   HeartHandshake,
   MapPin,
   Pause,
@@ -26,6 +27,7 @@ import {
   type NeedKey,
   type WorldEvent,
 } from "@/lib/simulation";
+import { tAgent, tEvent, tMemory, tNeed, tPlace, tWeather, ui, type Language } from "@/lib/i18n";
 
 const isGitHubPages = import.meta.env.BASE_URL !== "/";
 const assetUrl = (fileName: string, storageFileName: string) => isGitHubPages
@@ -39,11 +41,11 @@ const visualAssets = {
 };
 
 const needKeys: NeedKey[] = ["hunger", "safety", "affiliation", "curiosity"];
-const needMeta: Record<NeedKey, { label: string; tone: string; icon: typeof Sprout }> = {
-  hunger: { label: "空腹", tone: "var(--persimmon)", icon: Sprout },
-  safety: { label: "安全", tone: "var(--ink-blue)", icon: ShieldAlert },
-  affiliation: { label: "つながり", tone: "var(--moss)", icon: HeartHandshake },
-  curiosity: { label: "好奇心", tone: "var(--gold)", icon: Eye },
+const needMeta: Record<NeedKey, { tone: string; icon: typeof Sprout }> = {
+  hunger: { tone: "var(--persimmon)", icon: Sprout },
+  safety: { tone: "var(--ink-blue)", icon: ShieldAlert },
+  affiliation: { tone: "var(--moss)", icon: HeartHandshake },
+  curiosity: { tone: "var(--gold)", icon: Eye },
 };
 
 const eventGlyph: Record<WorldEvent["kind"], string> = {
@@ -63,13 +65,21 @@ export default function Home() {
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [selectedId, setSelectedId] = useState("mio");
+  const [language, setLanguage] = useState<Language>(() => typeof window !== "undefined" && window.localStorage.getItem("nozomi-language") === "en" ? "en" : "ja");
   const selected = useMemo(() => world.agents.find((agent) => agent.id === selectedId) ?? world.agents[0], [selectedId, world.agents]);
+  const text = ui[language];
+  const selectedDisplay = tAgent(selected, language);
 
   useEffect(() => {
     if (!isGitHubPages) return undefined;
     document.body.classList.add("github-pages");
     return () => document.body.classList.remove("github-pages");
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("nozomi-language", language);
+    document.documentElement.lang = language;
+  }, [language]);
 
   useEffect(() => {
     if (!running) return undefined;
@@ -94,47 +104,50 @@ export default function Home() {
     <div className="observatory-shell">
       <header className="topbar">
         <div className="brand-lockup">
-          <img className="brand-mark" src={visualAssets.logo} alt="NOZOMI Islandを表す標章" />
+          <img className="brand-mark" src={visualAssets.logo} alt={language === "ja" ? "NOZOMI Islandを表す標章" : "The NOZOMI Island emblem"} />
           <div>
             <p className="eyebrow">AUTONOMOUS ISLAND OBSERVATORY</p>
             <h1>NOZOMI <em>Beings</em></h1>
           </div>
         </div>
-        <div className="world-status" aria-label="世界の状態">
+        <div className="world-status" aria-label={language === "ja" ? "世界の状態" : "World state"}>
           <span className="status-dot" />
-          <span>DAY {String(world.day).padStart(2, "0")}</span>
+          <span>{text.day} {String(world.day).padStart(2, "0")}</span>
           <span className="status-divider" />
           <span>{displayTime(world.hour)}</span>
-          <span className="weather">{world.weather}</span>
+          <span className="weather">{tWeather(world.weather, language)}</span>
         </div>
         <div className="control-bank">
+          <Button size="sm" variant="outline" className="control-button language-button" onClick={() => setLanguage((current) => current === "ja" ? "en" : "ja")} aria-label={language === "ja" ? "Switch to English" : "日本語に切り替え"}>
+            <Globe2 size={15} /> <span>{language === "ja" ? "EN" : "JP"}</span>
+          </Button>
           <Button size="sm" variant="outline" className="control-button" onClick={() => setSpeed((current) => current === 1 ? 2 : current === 2 ? 4 : 1)}>
             <FastForward size={15} /> <span>{speed}×</span>
           </Button>
           <Button size="sm" className="primary-control" onClick={() => setRunning((current) => !current)}>
-            {running ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />} {running ? "観察を止める" : "観察を続ける"}
+            {running ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />} {running ? text.pause : text.resume}
           </Button>
-          <Button size="icon" variant="outline" className="control-button reset-button" onClick={resetWorld} aria-label="世界を初期状態に戻す">
+          <Button size="icon" variant="outline" className="control-button reset-button" onClick={resetWorld} aria-label={text.reset}>
             <RotateCcw size={16} />
           </Button>
         </div>
       </header>
 
       <main className="observatory-grid">
-        <aside className="log-column" aria-label="世界の出来事ログ">
+        <aside className="log-column" aria-label={language === "ja" ? "世界の出来事ログ" : "World event log"}>
           <div className="panel-heading">
-            <span className="tape-label">LIVE FIELD LOG</span>
+            <span className="tape-label">{text.fieldLog}</span>
             <span className="tick-readout">TICK {String(world.tick).padStart(3, "0")}</span>
           </div>
-          <p className="panel-intro">世界は、指示を待たずに進行しています。理由は欲求と、見聞きした記憶に残ります。</p>
+          <p className="panel-intro">{text.logIntro}</p>
           <div className="event-stack">
             {world.events.map((event, index) => (
               <button className={`event-entry event-${event.kind}`} onClick={() => setSelectedId(event.agentIds[0])} key={event.id}>
                 <span className="event-time">{String(event.tick).padStart(3, "0")}</span>
                 <span className="event-glyph">{eventGlyph[event.kind]}</span>
                 <span className="event-copy">
-                  <strong>{event.title}</strong>
-                  <span>{event.description}</span>
+                  <strong>{tEvent(event, language).title}</strong>
+                  <span>{tEvent(event, language).description}</span>
                 </span>
                 {index === 0 && <span className="new-mark">NEW</span>}
               </button>
@@ -142,20 +155,20 @@ export default function Home() {
           </div>
           <div className="field-note" style={{ backgroundImage: `linear-gradient(90deg, rgba(248,245,236,.93), rgba(248,245,236,.62)), url('${visualAssets.notes}')` }}>
             <span className="note-index">OBS. 04</span>
-            <p>「命令がなくても、局所の不足が島を少しずつ動かしている。」</p>
+            <p>{text.note}</p>
             <span className="note-credit">— field protocol</span>
           </div>
         </aside>
 
-        <section className="world-column" aria-label="NOZOMI Islandの観察窓">
+        <section className="world-column" aria-label={language === "ja" ? "NOZOMI Islandの観察窓" : "NOZOMI Island observation window"}>
           <div className="world-header">
             <div>
-              <p className="eyebrow">A SMALL WORLD, IN MOTION</p>
-              <h2>誰も呼んでいないのに、<br />彼らは動き出す。</h2>
+              <p className="eyebrow">{text.worldLabel}</p>
+              <h2>{text.worldTitle[0]}<br />{text.worldTitle[1]}</h2>
             </div>
             <div className="world-key">
-              <span><i className="key-dot active" /> 自律NPC</span>
-              <span><i className="key-line" /> 直近の航跡</span>
+              <span><i className="key-dot active" /> {text.agents}</span>
+              <span><i className="key-line" /> {text.trails}</span>
             </div>
           </div>
 
@@ -165,7 +178,7 @@ export default function Home() {
               {(Object.entries(places) as [keyof typeof places, typeof places[keyof typeof places]][]).map(([key, place]) => (
                 <div className={`place-marker place-${place.kind}`} style={{ left: `${place.x}%`, top: `${place.y}%` }} key={key}>
                   <span className="place-pin" />
-                  <span>{place.label}</span>
+                  <span>{tPlace(key, language)}</span>
                 </div>
               ))}
               <svg className="trail-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -177,11 +190,11 @@ export default function Home() {
                   className={`agent-marker ${selected.id === agent.id ? "selected" : ""}`}
                   style={{ left: `${agent.x}%`, top: `${agent.y}%`, "--agent-color": agent.color } as React.CSSProperties}
                   onClick={() => setSelectedId(agent.id)}
-                  aria-label={`${agent.name}を観察する`}
+                  aria-label={language === "ja" ? `${agent.name}を観察する` : `Observe ${tAgent(agent, language).name}`}
                 >
                   <span className="agent-pulse" />
                   <span className="agent-pin">{agent.symbol}</span>
-                  <span className="agent-name">{agent.name}</span>
+                  <span className="agent-name">{tAgent(agent, language).name}</span>
                 </button>
               ))}
               <div className="map-scale"><span /> 20 m</div>
@@ -190,41 +203,41 @@ export default function Home() {
           </div>
 
           <div className="world-footer">
-            <div><span className="footer-number">{world.agents.length}</span><span>個の内なる世界が、<br />同時に進行中</span></div>
-            <div><span className="footer-number">{Object.values(world.visited).reduce((sum, value) => sum + value, 0)}</span><span>回の場所選択が、<br />今日のNOZOMI Islandを描いた</span></div>
-            <div className="observation-state"><Activity size={16} /><span>{running ? "観察を記録中" : "世界を静止中"}</span></div>
+            <div><span className="footer-number">{world.agents.length}</span><span>{text.innerWorld}<br />{text.simultaneous}</span></div>
+            <div><span className="footer-number">{Object.values(world.visited).reduce((sum, value) => sum + value, 0)}</span><span>{text.choices}<br />{text.islandDrawn}</span></div>
+            <div className="observation-state"><Activity size={16} /><span>{running ? text.recording : text.frozen}</span></div>
           </div>
         </section>
 
-        <aside className="specimen-column" aria-label="選択中NPCの内面">
+        <aside className="specimen-column" aria-label={language === "ja" ? "選択中NPCの内面" : "Selected NPC inner state"}>
           <div className="panel-heading specimen-heading">
-            <span className="tape-label">SELECTED SPECIMEN</span>
+            <span className="tape-label">{text.specimen}</span>
             <span className="specimen-no">NPC—{selected.id.toUpperCase()}</span>
           </div>
           <section className="identity-card">
             <div className="portrait-stamp" style={{ background: selected.color }}>{selected.symbol}</div>
             <div className="identity-copy">
-              <p>{selected.role}</p>
-              <h3>{selected.name}</h3>
-              <span><MapPin size={13} /> {places[selected.place].label}</span>
+              <p>{selectedDisplay.role}</p>
+              <h3>{selectedDisplay.name}</h3>
+              <span><MapPin size={13} /> {tPlace(selected.place, language)}</span>
             </div>
-            <span className="mood-stamp">{selected.mood}</span>
+            <span className="mood-stamp">{selectedDisplay.mood}</span>
           </section>
 
           <section className="intent-card">
-            <span className="intent-label"><Brain size={14} /> 現在の意図</span>
-            <strong>{selected.goal}</strong>
-            <p>{selected.action}</p>
+            <span className="intent-label"><Brain size={14} /> {text.intent}</span>
+            <strong>{selectedDisplay.goal}</strong>
+            <p>{selectedDisplay.action}</p>
           </section>
 
           <section className="needs-section">
-            <div className="section-rule"><span>INNER WEATHER</span><span>緊急度</span></div>
+            <div className="section-rule"><span>{text.innerWeather}</span><span>{text.urgency}</span></div>
             {needKeys.map((key) => {
               const meta = needMeta[key];
               const Icon = meta.icon;
               return (
                 <div className="need-row" key={key}>
-                  <div className="need-label"><Icon size={14} style={{ color: meta.tone }} /> <span>{meta.label}</span><b>{Math.round(selected.needs[key] * 100)}</b></div>
+                  <div className="need-label"><Icon size={14} style={{ color: meta.tone }} /> <span>{tNeed(key, language)}</span><b>{Math.round(selected.needs[key] * 100)}</b></div>
                   <div className="need-track"><span style={{ width: `${selected.needs[key] * 100}%`, background: meta.tone }} /></div>
                 </div>
               );
@@ -232,32 +245,32 @@ export default function Home() {
           </section>
 
           <section className="memory-section">
-            <div className="section-rule"><span>RECENT IMPRESSIONS</span><span>記憶</span></div>
+            <div className="section-rule"><span>{text.impressions}</span><span>{text.memory}</span></div>
             <div className="memory-list">
               {selected.memories.slice(0, 3).map((memory) => (
                 <div className="memory-item" key={memory.id}>
                   <span className="memory-tick">{String(memory.tick).padStart(3, "0")}</span>
-                  <p>{memory.text}</p>
-                  <span className="confidence" title="記憶の確かさ" style={{ width: `${memory.confidence * 100}%` }} />
+                  <p>{tMemory(memory.text, language)}</p>
+                  <span className="confidence" title={language === "ja" ? "記憶の確かさ" : "Memory confidence"} style={{ width: `${memory.confidence * 100}%` }} />
                 </div>
               ))}
             </div>
           </section>
 
           <section className="weight-section">
-            <div className="section-rule"><span>GENTLE INTERVENTION</span><span>欲求の重み</span></div>
-            <p>観察者は、次の選択を決めずに「傾き」だけを調整できます。</p>
+            <div className="section-rule"><span>{text.intervention}</span><span>{text.weights}</span></div>
+            <p>{text.weightHelp}</p>
             {needKeys.map((key) => (
               <label className="weight-control" key={key}>
-                <span>{needMeta[key].label}</span>
+                <span>{tNeed(key, language)}</span>
                 <input type="range" min="0.5" max="1.8" step="0.05" value={selected.traits[key]} onChange={(event) => adjustTrait(key, Number(event.target.value))} />
                 <output>{selected.traits[key].toFixed(2)}</output>
               </label>
             ))}
           </section>
           <div className="cove-peek" style={{ backgroundImage: `linear-gradient(90deg, rgba(22,64,58,.94), rgba(22,64,58,.24)), url('${visualAssets.cove}')` }}>
-            <span>EVENT AT THE COVE</span>
-            <p>知らない光が、まだ誰かの行動を待っている。</p>
+            <span>{text.coveEvent}</span>
+            <p>{text.coveCopy}</p>
             <ChevronRight size={17} />
           </div>
         </aside>
@@ -266,31 +279,31 @@ export default function Home() {
         <div className="footer-topline" />
         <div className="footer-explainer">
           <div className="footer-lead">
-            <span className="tape-label">HOW THIS WORLD MOVES</span>
-            <h2 id="simulation-footer-title">これは、表示だけのモックではありません。</h2>
-            <p>NOZOMI Islandの住人は、空腹・安全・つながり・好奇心という数値的な欲求を持ち、時間と出来事でその値を変化させています。いま必要なことを選び、歩き、出会い、その出来事を短期記憶として残します。</p>
+            <span className="tape-label">{text.footerLabel}</span>
+            <h2 id="simulation-footer-title">{text.footerTitle}</h2>
+            <p>{text.footerLead}</p>
           </div>
           <div className="mechanism-grid">
             <article>
               <span className="mechanism-number">01</span>
-              <h3>欲求が行き先を選ぶ</h3>
-              <p>欲求の強さと個性の重みから、食料、安全な場所、他者、未知の場所を比べます。</p>
+              <h3>{text.mechanismTitles[0]}</h3>
+              <p>{text.mechanismCopies[0]}</p>
             </article>
             <article>
               <span className="mechanism-number">02</span>
-              <h3>出会いが関係を変える</h3>
-              <p>近くで出会った住人どうしは、trustとfamiliarityを更新し、孤立の強さも変わります。</p>
+              <h3>{text.mechanismTitles[1]}</h3>
+              <p>{text.mechanismCopies[1]}</p>
             </article>
             <article>
               <span className="mechanism-number">03</span>
-              <h3>記憶が理由を残す</h3>
-              <p>選択や遭遇は、観察できる短期記憶として残り、次の物語の足跡になります。</p>
+              <h3>{text.mechanismTitles[2]}</h3>
+              <p>{text.mechanismCopies[2]}</p>
             </article>
           </div>
         </div>
         <div className="footer-boundary">
           <span className="boundary-dot" />
-          <p><strong>現在の範囲:</strong> この世界はブラウザ内で進む短期シミュレーションです。ページを閉じると状態はリセットされ、長期保存・複雑な会話・LLMによる計画生成は、これから育てる層として残しています。</p>
+          <p><strong>{text.boundaryLabel}</strong> {text.boundaryCopy}</p>
           <span className="footer-signature">NOZOMI BEINGS / FIELD PROTOCOL 01</span>
         </div>
       </footer>
