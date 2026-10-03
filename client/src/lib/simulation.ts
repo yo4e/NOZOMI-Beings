@@ -1,3 +1,5 @@
+import { random01 } from "./random";
+
 /**
  * Field Notes Observatory: deterministic inner world model. The simulation treats
  * NPC life as numeric drives, local observation, relations, and bounded memories.
@@ -53,6 +55,7 @@ export interface WorldEvent {
 }
 
 export interface WorldState {
+  seed: number;
   tick: number;
   day: number;
   hour: number;
@@ -72,7 +75,7 @@ export const places: Record<PlaceKey, { label: string; x: number; y: number; kin
 };
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
-const id = () => Math.random().toString(36).slice(2, 9);
+
 
 const initialAgents: Agent[] = [
   {
@@ -98,7 +101,10 @@ const initialAgents: Agent[] = [
   },
 ];
 
-export const createInitialState = (): WorldState => ({
+export const DEFAULT_SEED = 1;
+
+export const createInitialState = (seed = DEFAULT_SEED): WorldState => ({
+  seed: seed >>> 0,
   tick: 12,
   day: 1,
   hour: 9,
@@ -117,7 +123,7 @@ const needLabel: Record<NeedKey, string> = { hunger: "空腹", safety: "安全",
 function chooseDestination(agent: Agent, state: WorldState) {
   const entries = Object.entries(places) as [PlaceKey, typeof places[PlaceKey]][];
   const best = entries.map(([key, place]) => {
-    let score = 0.12 + Math.random() * .12;
+    let score = 0.12 + random01(state.seed, [state.tick, agent.id, "destination", key]) * .12;
     if (place.kind === "food") score += agent.needs.hunger * agent.traits.hunger;
     if (place.kind === "safe") score += agent.needs.safety * agent.traits.safety;
     if (place.kind === "social") score += agent.needs.affiliation * agent.traits.affiliation;
@@ -145,7 +151,7 @@ export function advanceWorld(previous: WorldState): WorldState {
 
   const events: WorldEvent[] = [];
   state.agents.forEach((agent) => {
-    agent.needs.hunger = clamp(agent.needs.hunger + .035 + Math.random() * .018);
+    agent.needs.hunger = clamp(agent.needs.hunger + .035 + random01(state.seed, [state.tick, agent.id, "hunger"]) * .018);
     agent.needs.safety = clamp(agent.needs.safety + (state.weather === "海風" ? .018 : .006) - .004 * agent.needs.affiliation);
     agent.needs.affiliation = clamp(agent.needs.affiliation + .016);
     agent.needs.curiosity = clamp(agent.needs.curiosity + .012);
@@ -159,8 +165,8 @@ export function advanceWorld(previous: WorldState): WorldState {
     } else {
       const destination = chooseDestination(agent, state);
       const reason = reasonFor(agent, destination.key);
-      agent.targetX = destination.place.x + (Math.random() * 6 - 3);
-      agent.targetY = destination.place.y + (Math.random() * 5 - 2.5);
+      agent.targetX = destination.place.x + (random01(state.seed, [state.tick, agent.id, "target-x"]) * 6 - 3);
+      agent.targetY = destination.place.y + (random01(state.seed, [state.tick, agent.id, "target-y"]) * 5 - 2.5);
       agent.place = destination.key;
       agent.action = reason.action;
       agent.goal = reason.goal;
@@ -168,30 +174,30 @@ export function advanceWorld(previous: WorldState): WorldState {
       agent.needs[reason.key] = clamp(agent.needs[reason.key] - .18);
       state.visited[destination.key] += 1;
       const event: WorldEvent = {
-        id: id(), tick: state.tick,
+        id: `event:${state.tick}:move:${agent.id}`, tick: state.tick,
         kind: reason.key === "curiosity" ? "curiosity" : reason.key === "affiliation" ? "social" : "need",
         title: reason.key === "curiosity" ? "自分で見つける" : `${needLabel[reason.key]}に従う`,
         description: `${agent.name}は${reason.goal}ため、${destination.place.label}へ向かった。`,
         agentIds: [agent.id], place: destination.key,
       };
       events.push(event);
-      agent.memories = [{ id: id(), tick: state.tick, text: event.description, confidence: .9, salience: .48 }, ...agent.memories].slice(0, 4);
+      agent.memories = [{ id: `memory:${event.id}:${agent.id}`, tick: state.tick, text: event.description, confidence: .9, salience: .48 }, ...agent.memories].slice(0, 4);
     }
   });
 
   const pairs: [Agent, Agent][] = [];
   for (let i = 0; i < state.agents.length; i += 1) for (let j = i + 1; j < state.agents.length; j += 1) {
     const a = state.agents[i], b = state.agents[j];
-    if (Math.hypot(a.x - b.x, a.y - b.y) < 13 && Math.random() < .31) pairs.push([a, b]);
+    if (Math.hypot(a.x - b.x, a.y - b.y) < 13 && random01(state.seed, [state.tick, a.id, b.id, "encounter"]) < .31) pairs.push([a, b]);
   }
   pairs.slice(0, 1).forEach(([a, b]) => {
     const aRel = a.relations[b.id]; const bRel = b.relations[a.id];
     aRel.trust = clamp(aRel.trust + .045); bRel.trust = clamp(bRel.trust + .045);
     aRel.familiarity = clamp(aRel.familiarity + .055); bRel.familiarity = clamp(bRel.familiarity + .055);
     a.needs.affiliation = clamp(a.needs.affiliation - .22); b.needs.affiliation = clamp(b.needs.affiliation - .22);
-    const event: WorldEvent = { id: id(), tick: state.tick, kind: "social", title: "出会う", description: `${a.name}と${b.name}は${places[a.place].label}で立ち止まり、少し話した。`, agentIds: [a.id, b.id], place: a.place };
+    const event: WorldEvent = { id: `event:${state.tick}:social:${a.id}:${b.id}`, tick: state.tick, kind: "social", title: "出会う", description: `${a.name}と${b.name}は${places[a.place].label}で立ち止まり、少し話した。`, agentIds: [a.id, b.id], place: a.place };
     events.unshift(event);
-    [a, b].forEach((agent) => agent.memories = [{ id: id(), tick: state.tick, text: event.description, confidence: .94, salience: .67 }, ...agent.memories].slice(0, 4));
+    [a, b].forEach((agent) => agent.memories = [{ id: `memory:${event.id}:${agent.id}`, tick: state.tick, text: event.description, confidence: .94, salience: .67 }, ...agent.memories].slice(0, 4));
   });
   state.events = [...events, ...state.events].slice(0, 8);
   return state;

@@ -61,7 +61,7 @@ function displayTime(hour: number) {
 }
 
 export default function Home() {
-  const [world, setWorld] = useState(createInitialState);
+  const [world, setWorld] = useState(() => createInitialState());
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [selectedId, setSelectedId] = useState("mio");
@@ -88,7 +88,7 @@ export default function Home() {
   }, [running, speed]);
 
   const resetWorld = () => {
-    setWorld(createInitialState());
+    setWorld(createInitialState(world.seed));
     setSelectedId("mio");
     setRunning(false);
   };
