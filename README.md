@@ -135,7 +135,7 @@ NOZOMI Beingsは、当面次の問いを追います。
 - 6〜10 atomic actions
 - bounded episodic memory
 - local observation
-- deterministic / utility-based action scoring
+- seeded / utility-based action scoring
 - no LLM required
 
 まず「内的状態 → 行動 → 世界変化」の因果を壊さずに観測できる最小系を固定します。
@@ -252,3 +252,25 @@ NOZOMI Beingsは、現在のシステムに以下が存在すると主張しま�
 
 **Experimental / research prototype.**  
 仕様・モデル・評価方法は実験結果に応じて積極的に変更します。
+
+## Reproducibility
+
+`createInitialState(seed = 1)` stores an unsigned 32-bit seed in the state. With the same
+code and runtime, seed, initial state (including agent order), tick count, and trait
+slider interventions at the same ticks, states and retained events/memories replay
+identically. UI reset restores initial traits with the current seed and pauses.
+Speed changes only the wall-clock interval between ticks.
+
+Action scores, hunger increments, target offsets, and encounters use a local stateless
+keyed RNG v1 (seed / tick / agent or pair / purpose / destination). IDs derive from
+tick, event type, and agent IDs without consuming behavior randomness. There is no
+dependency on WorldSimSeed internal paths.
+
+Run `pnpm test` for 100-tick state/event replay, interventions, and reset checks.
+This implements only part of the research baseline tracked in #1 and #7. Full logs,
+ablation, statistical evaluation, and compatibility across engine versions or
+runtimes are outside this change; events and memories remain bounded.
+
+## License
+
+[MIT](LICENSE). Copyright (c) 2026 Yoshie Yamada.
