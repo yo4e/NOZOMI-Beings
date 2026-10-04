@@ -274,3 +274,36 @@ runtimes are outside this change; events and memories remain bounded.
 ## License
 
 [MIT](LICENSE). Copyright (c) 2026 Yoshie Yamada.
+
+## Small observation / measurement baseline
+
+Completion criteria: preserve Mio/Sora/Riku; select a uint32 seed; pause and advance
+one tick; inspect all six candidate scores at each destination decision; compare
+four policies for 100 ticks from the same state; download reproducible JSON.
+The experiment leaves the observed world paused and unchanged. Its result remains
+labelled with its starting seed/tick even if observation later continues.
+
+`normal` retains existing scoring; `no-drive` removes only drive contributions
+(keeps seeded noise and current-place penalty); `random` chooses the highest of six
+seeded uniform draws; `fixed-policy` always chooses grove. All other state updates,
+encounters and need relief stay identical. These are destination-choice ablations,
+not agents with disabled physiology. JSON includes the exact initial state (including
+trait interventions), 100 full states per policy, all decisions and their numeric
+components, per-agent destination counts and average needs over those 100 states.
+Replay with `advanceWorld(initial, policy)` repeatedly using this engine revision.
+
+Limits: memory and relations are recorded but do not directly enter destination
+scores; needs decrease at selection, before arrival; visited counts count selections.
+The preloaded scene begins at tick 12 with fictional earlier events. Each exported
+state retains only the existing bounded event/memory window; decision traces cover
+all new selections in the experiment. This is a descriptive single-seed comparison,
+not statistical evidence for consciousness or a general claim of autonomy.
+
+Verify with `pnpm test`, `pnpm check`, `pnpm build`. No new dependencies are required.
+
+Observed example (seed 42, start tick 13 after one manual step, 100 ticks):
+normal made 15 destination choices; no-drive 13; random 14; fixed-policy 29.
+These totals differ partly because travel duration depends on destinations; they
+are not per-tick decision rates or a significance test. Decision records include
+the exact needs, traits, place and visited counts at scoring, before need relief.
+The `normal` branch is the present prototype, not a memory-based full model.

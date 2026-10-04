@@ -54,7 +54,15 @@ export interface WorldEvent {
   place: PlaceKey;
 }
 
+export type Policy = "normal" | "no-drive" | "random" | "fixed-policy";
+export interface Decision {
+  tick: number; agentId: string; policy: Policy; selected: PlaceKey;
+  inputs: { needs: Record<NeedKey, number>; traits: Record<NeedKey, number>; place: PlaceKey; visited: Record<PlaceKey, number> };
+  candidates: { key: PlaceKey; base: number; drive: number; penalty: number; score: number }[];
+}
+
 export interface WorldState {
+  decisions: Decision[];
   seed: number;
   tick: number;
   day: number;
@@ -104,6 +112,7 @@ const initialAgents: Agent[] = [
 export const DEFAULT_SEED = 1;
 
 export const createInitialState = (seed = DEFAULT_SEED): WorldState => ({
+  decisions: [],
   seed: seed >>> 0,
   tick: 12,
   day: 1,
@@ -120,18 +129,22 @@ export const createInitialState = (seed = DEFAULT_SEED): WorldState => ({
 
 const needLabel: Record<NeedKey, string> = { hunger: "空腹", safety: "安全", affiliation: "つながり", curiosity: "好奇心" };
 
-function chooseDestination(agent: Agent, state: WorldState) {
-  const entries = Object.entries(places) as [PlaceKey, typeof places[PlaceKey]][];
-  const best = entries.map(([key, place]) => {
-    let score = 0.12 + random01(state.seed, [state.tick, agent.id, "destination", key]) * .12;
-    if (place.kind === "food") score += agent.needs.hunger * agent.traits.hunger;
-    if (place.kind === "safe") score += agent.needs.safety * agent.traits.safety;
-    if (place.kind === "social") score += agent.needs.affiliation * agent.traits.affiliation;
-    if (place.kind === "unknown") score += agent.needs.curiosity * agent.traits.curiosity * (1 / (1 + state.visited[key] * .22));
-    if (key === agent.place) score -= .1;
-    return { key, place, score };
-  }).sort((a, b) => b.score - a.score)[0];
-  return best;
+function chooseDestination(agent: Agent, state: WorldState, policy: Policy) {
+  const candidates = (Object.entries(places) as [PlaceKey, typeof places[PlaceKey]][]).map(([key, place], index) => {
+    const base = policy === "random" ? random01(state.seed, [state.tick, agent.id, "policy-random", key]) : policy === "fixed-policy" ? (index === 0 ? 1 : 0) : 0.12 + random01(state.seed, [state.tick, agent.id, "destination", key]) * .12;
+    let drive = 0;
+    if (policy === "normal") {
+      if (place.kind === "food") drive = agent.needs.hunger * agent.traits.hunger;
+      if (place.kind === "safe") drive = agent.needs.safety * agent.traits.safety;
+      if (place.kind === "social") drive = agent.needs.affiliation * agent.traits.affiliation;
+      if (place.kind === "unknown") drive = agent.needs.curiosity * agent.traits.curiosity * (1 / (1 + state.visited[key] * .22));
+    }
+    const penalty = (policy === "normal" || policy === "no-drive") && key === agent.place ? -.1 : 0;
+    return { key, base, drive, penalty, score: base + drive + penalty };
+  });
+  const best = [...candidates].sort((a, b) => b.score - a.score)[0];
+  state.decisions.push({ tick: state.tick, agentId: agent.id, policy, selected: best.key, inputs: { needs: { ...agent.needs }, traits: { ...agent.traits }, place: agent.place, visited: { ...state.visited } }, candidates });
+  return { key: best.key, place: places[best.key] };
 }
 
 function reasonFor(agent: Agent, destination: PlaceKey) {
@@ -142,8 +155,9 @@ function reasonFor(agent: Agent, destination: PlaceKey) {
   return { action: destination === "cove" ? "潮だまりの光を確かめに行く" : "霧の奥を見に行く", goal: "まだ知らないことを一つ確かめる", mood: "静かな好奇心", key: "curiosity" as NeedKey };
 }
 
-export function advanceWorld(previous: WorldState): WorldState {
+export function advanceWorld(previous: WorldState, policy: Policy = "normal"): WorldState {
   const state: WorldState = JSON.parse(JSON.stringify(previous));
+  state.decisions = [];
   state.tick += 1;
   state.hour = (state.hour + 1) % 24;
   if (state.hour === 0) state.day += 1;
@@ -163,7 +177,7 @@ export function advanceWorld(previous: WorldState): WorldState {
       agent.y += dy * .19;
       agent.path = [...agent.path.slice(-8), { x: agent.x, y: agent.y }];
     } else {
-      const destination = chooseDestination(agent, state);
+      const destination = chooseDestination(agent, state, policy);
       const reason = reasonFor(agent, destination.key);
       agent.targetX = destination.place.x + (random01(state.seed, [state.tick, agent.id, "target-x"]) * 6 - 3);
       agent.targetY = destination.place.y + (random01(state.seed, [state.tick, agent.id, "target-y"]) * 5 - 2.5);

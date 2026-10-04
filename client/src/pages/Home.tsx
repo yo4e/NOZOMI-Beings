@@ -29,10 +29,10 @@ import {
 } from "@/lib/simulation";
 import { tAgent, tEvent, tMemory, tNeed, tPlace, tWeather, ui, type Language } from "@/lib/i18n";
 
+import { runExperiment } from "@/lib/experiment";
+
 const isGitHubPages = import.meta.env.BASE_URL !== "/";
-const assetUrl = (fileName: string, storageFileName: string) => isGitHubPages
-  ? `${import.meta.env.BASE_URL}assets/${fileName}`
-  : `/manus-storage/${storageFileName}`;
+const assetUrl = (fileName: string, _storageFileName: string) => `${import.meta.env.BASE_URL}assets/${fileName}`;
 const visualAssets = {
   atlas: assetUrl("mintwhirl-island-atlas.png", "mintwhirl-island-atlas_471d94bd.png"),
   notes: assetUrl("field-notes-specimen.png", "field-notes-specimen_ead964b1.png"),
@@ -62,6 +62,9 @@ function displayTime(hour: number) {
 
 export default function Home() {
   const [world, setWorld] = useState(() => createInitialState());
+  const [seedInput, setSeedInput] = useState("1");
+  const [seedError, setSeedError] = useState(false);
+  const [experiment, setExperiment] = useState<ReturnType<typeof runExperiment> | null>(null);
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [selectedId, setSelectedId] = useState("mio");
@@ -133,6 +136,26 @@ export default function Home() {
         </div>
       </header>
 
+      <section className="experiment-panel" aria-label={language === "ja" ? "再現実験" : "Replay experiment"}>
+        <label>Seed <input aria-label="Seed" value={seedInput} onChange={e => setSeedInput(e.target.value)} inputMode="numeric" /></label>
+        <Button variant="outline" size="sm" onClick={() => {
+          const seed = Number(seedInput);
+          if (!/^\d+$/.test(seedInput) || !Number.isInteger(seed) || seed > 4294967295) { setSeedError(true); return; }
+          setSeedError(false); setWorld(createInitialState(seed)); setRunning(false); setSelectedId("mio"); setExperiment(null);
+        }}>{language === "ja" ? "Seedで開始" : "Start with seed"}</Button>
+        <Button variant="outline" size="sm" onClick={() => { setRunning(false); setWorld(current => advanceWorld(current)); }}>{language === "ja" ? "1 tick進める" : "Step 1 tick"}</Button>
+        <Button variant="outline" size="sm" onClick={() => { setRunning(false); setExperiment(runExperiment(world)); }}>{language === "ja" ? "現在から4方式 × 100 tick" : "Compare 4 policies × 100 ticks"}</Button>
+        {seedError && <span role="alert">Seed: 0–4294967295</span>}
+        <small>{language === "ja" ? "感情・意識の実在を示すものではなく、数値規則の観察です。" : "Numeric rules, not evidence of feelings or consciousness."}</small>
+        {experiment && <div className="experiment-result">
+          <p>{language === "ja" ? "比較開始" : "Start"}: seed {experiment.initial.seed}, tick {experiment.initial.tick} → {experiment.initial.tick + 100}</p>
+          <p>{experiment.runs.map(run => `${run.policy}: ${run.summary.decisions}`).join(" / ")} {language === "ja" ? "回の目的地選択" : "destination selections"}</p>
+          <Button size="sm" variant="outline" onClick={() => {
+            const url = URL.createObjectURL(new Blob([JSON.stringify(experiment, null, 2)], { type: "application/json" }));
+            const link = document.createElement("a"); link.href = url; link.download = `nozomi-${experiment.initial.seed}-${experiment.initial.tick}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}>{language === "ja" ? "実験JSONを保存" : "Save experiment JSON"}</Button>
+        </div>}
+      </section>
       <main className="observatory-grid">
         <aside className="log-column" aria-label={language === "ja" ? "世界の出来事ログ" : "World event log"}>
           <div className="panel-heading">
@@ -155,7 +178,12 @@ export default function Home() {
           </div>
           <div className="field-note" style={{ backgroundImage: `linear-gradient(90deg, rgba(248,245,236,.93), rgba(248,245,236,.62)), url('${visualAssets.notes}')` }}>
             <span className="note-index">OBS. 04</span>
-            <p>{text.note}</p>
+            <p>{language === "ja" ? "今回のtickの選択根拠（移動中は新しい選択なし）" : "Decisions this tick (none while travelling)"}</p>
+            {world.decisions.length === 0 && <p>{language === "ja" ? "移動・状態更新を観察中" : "Observing movement and state updates"}</p>}
+            {world.decisions.map(d => <details key={d.agentId}><summary>{tAgent(world.agents.find(a => a.id === d.agentId)!, language).name} → {tPlace(d.selected, language)}</summary>
+              <table><thead><tr><th>{language === "ja" ? "候補" : "Candidate"}</th><th>base</th><th>drive</th><th>penalty</th><th>total</th></tr></thead><tbody>{d.candidates.map(c => <tr key={c.key}><td>{tPlace(c.key, language)}</td>{[c.base, c.drive, c.penalty, c.score].map((v, i) => <td key={i}>{v.toFixed(3)}</td>)}</tr>)}</tbody></table>
+            </details>)}
+            <p>{language === "ja" ? "最高スコアを選択。記憶・関係性はスコアに直接影響しません。欲求低下は目的地選択時です。" : "Highest score wins. Memory and relations do not directly affect scores. Needs decrease on selection."}</p>
             <span className="note-credit">— field protocol</span>
           </div>
         </aside>
